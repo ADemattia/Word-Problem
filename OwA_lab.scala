@@ -49,7 +49,7 @@ object OwA_lab extends lisa.Main {
   val P7p = Axiom(ne(ne(x)) <= x)
   val P8 = Axiom((x <= y) ==> (ne(y) <= ne(x)))
   val NC = Axiom((x <= ne(x)) ==> (x <= y))
-  // da eliminare
+  // to delete
   val P9 = Axiom((x n ne(x)) <= zero)
   val P9p = Axiom(one <= (x u ne(x)))
   val P3 = Axiom(zero <= x)
@@ -87,20 +87,20 @@ object OwA_lab extends lisa.Main {
   object OwA extends ProofTactic {
     def solve(using lib: library.type, proof: lib.Proof)(goal: Sequent): proof.ProofTacticJudgement = {
       if goal.right.size != 1 then proof.InvalidProofTactic("OwA can only be applied to solve goals of the form (s1 <= t1, s2 <= t2, ..., sn <= tn) |- s <= t")
-      else{ // Starting the proof of goal
+      else { // Starting the proof of goal
 
         def Extract_known_term(goal: Sequent): Set[OwA_lab.Term] = {
           val axiom_set = goal.left
           val toprove = goal.right
-          var total_set = goal.left ++ goal.right
-          var total_term_set : Set[OwA_lab.Term] = Set() 
+          val total_set = goal.left ++ goal.right
+          var total_term_set: Set[OwA_lab.Term] = Set()
           for (elem <- total_set) {
-            elem match {
-              case <=(left: OwA_lab.Term, right: OwA_lab.Term) =>{
-                total_term_set += left
-                total_term_set += right}
-              case _ =>
-            }
+            val elem_af = elem.asInstanceOf[AtomicFormula]
+            val left = elem_af.args.head
+            val right = elem_af.args.tail.head
+
+            total_term_set = total_term_set + left
+            total_term_set = total_term_set + right
           }
 
           def subExtract(set: Set[OwA_lab.Term]): Set[OwA_lab.Term] = {
@@ -108,14 +108,13 @@ object OwA_lab extends lisa.Main {
             for (elem <- set) {
               if elem.label == OwA_lab.ne then {
                 val a = elem.args.head
-                final_set = final_set + a  
+                final_set = final_set + a
               }
               if elem.label == OwA_lab.n then {
                 val a = elem.args.head
                 val b = elem.args.tail.head
                 final_set = final_set + a
                 final_set = final_set + b
-
               }
               if elem.label == OwA_lab.u then {
                 val a = elem.args.head
@@ -128,7 +127,7 @@ object OwA_lab extends lisa.Main {
             if final_set == set then { // nothing more was extracted
               return final_set
             }
-              return subExtract(final_set)
+            return subExtract(final_set)
           }
 
           def Complementation(set2: Set[OwA_lab.Term]): Set[OwA_lab.Term] = {
@@ -137,7 +136,7 @@ object OwA_lab extends lisa.Main {
               complementation = complementation + (OwA_lab.ne(elem))
               complementation = complementation + (OwA_lab.ne(OwA_lab.ne((elem))))
             }
-            return complementation 
+            return complementation
           }
 
           val known_term = subExtract(total_term_set)
@@ -147,302 +146,297 @@ object OwA_lab extends lisa.Main {
         val axiom_set = goal.left
         var axiom_term: Set[Term] = Set()
         for (elem <- axiom_set) {
-          elem match {
-            case <=(left: Term, right: Term) =>{
-              axiom_term += left
-              axiom_term += right
-          }
-          case _=> 
+          val elem_af = elem.asInstanceOf[AtomicFormula]
+          val left = elem_af.args.head
+          val right = elem_af.args.tail.head
+          axiom_term = axiom_term + left
+          axiom_term = axiom_term + right
         }
-       }
+
         val known_term = Extract_known_term(goal)
-        println(known_term.size)
         var i = 0
         val debug = 0
+        var ncall = 0
         var proven_sequent: Set[proof.ValidProofTactic] = Set()
         var visited_sequent: Set[Sequent] = Set()
 
         def prove(goal: Sequent): proof.ProofTacticJudgement = {
+          ncall = ncall + 1
           for (elem <- proven_sequent) {
             if elem.bot == goal then {
               val s1 = have(goal) by Tautology.from(have(elem))
               return s1.judgement
             }
-            
           }
 
           if visited_sequent.contains(goal) then {
-              if debug == 1 then {
-              println(s"gia visitato e non provato il seguente ${i}")
+            if debug == 1 then {
+              println(s"Yet Visited ${i}")
               println(goal.right.head)
-              i += 1   
-              println("-------------------")}
-              return proof.InvalidProofTactic("The inequality is not true in general")}
-          else {
+              i += 1
+              println("-------------------")
+            }
+            return proof.InvalidProofTactic("The inequality is not true in general")
+          } else {
             visited_sequent += (goal)
             if axiom_set.contains(goal.right.head) then {
               if debug == 1 then {
-              println(s"in assiomi ${i}")
-              i += 1
-              println(goal.right.head)
-              println("-------------------")}
+                println(s"In Axiom Set ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
               val s1 = have(goal) by Restate
               proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
               return s1.judgement
-            } else {
-              goal.right.head match {
-                case <=(left: Term, right: Term) => {
-                  // REFLEXIVITY
-                  if left == right then {
-                    if debug == 1 then {
-                    println(s"riflessivita ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val s1 = have(goal) by Tautology.from(reflexivity of (x := left))
-                    proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
-                    return s1.judgement
-                  }
+            }
+            val form = goal.right.head.asInstanceOf[AtomicFormula]
+            val left = form.args.head
+            val right = form.args.tail.head
+            // REFLEXIVITY
+            if left == right then {
+              if debug == 1 then {
+                println(s"Reflexivity ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
+              val s1 = have(goal) by Tautology.from(reflexivity of (x := left))
+              proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
+              return s1.judgement
+            }
 
-                  if right == OwA_lab.ne(OwA_lab.ne(left)) then {
-                    if debug == 1 then {
-                    println(s"assioma P7 ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val s1 = have(goal) by Tautology.from(P7 of (x := left))
-                    proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
-                    return s1.judgement
-                  }
-                  if left == OwA_lab.ne(OwA_lab.ne(right)) then {
-                    if debug == 1 then {
-                    println(s"assioma P7p ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val s1 = have(goal) by Tautology.from(P7p of (x := right))
-                    proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
-                    return s1.judgement
-                  }
+            if right == OwA_lab.ne(OwA_lab.ne(left)) then {
+              if debug == 1 then {
+                println(s"Axiom P7 ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
+              val s1 = have(goal) by Tautology.from(P7 of (x := left))
+              proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
+              return s1.judgement
+            }
+            if left == OwA_lab.ne(OwA_lab.ne(right)) then {
+              if debug == 1 then {
+                println(s"Axiom P7p ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
+              val s1 = have(goal) by Tautology.from(P7p of (x := right))
+              proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
+              return s1.judgement
+            }
+            // P3 & P3'
+            if left == zero then {
+              if debug == 1 then {
+                println(s"zero <= x ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
+              val s1 = have(goal) by Tautology.from(P3 of (x := right))
+              proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
+              return s1.judgement
+            }
+            if right == one then {
+              if debug == 1 then {
+                println(s"x <= one ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
+              val s1 = have(goal) by Tautology.from(P3p of (x := left))
+              proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
+              return s1.judgement
+            }
 
-                  if (left.label == OwA_lab.ne && left.args == Seq(one)) & right == zero then {
-                    if debug == 1 then {
-                    println(s"noz ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val s1 = have(goal) by Tautology.from(noz)
-                    proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
-                    return s1.judgement
-                  }
+            // NC
+            var new_goal_1 = Sequent(goal.left, Set(left <= OwA_lab.ne(left)))
+            val s1 = prove(new_goal_1)
+            if s1.isValid then {
+              val s3 = have(goal) by Tautology.from(NC of (x := left, y := right), have(s1))
+              proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
+              return s3.judgement
+            }
 
-                  if left == one & (right.label == OwA_lab.ne && right.args == Seq(zero)) then {
-                    if debug == 1 then {
-                    println(s"onz ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val s1 = have(goal) by Tautology.from(onz)
-                    proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
-                    return s1.judgement
-                  }
+            // P8
+            if left.label == OwA_lab.ne && right.label == OwA_lab.ne then {
+              if debug == 1 then {
+                println(s"ne(y) <= ne(x) ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
+              val a = left.args.head
+              val b = right.args.head
+              var new_goal_1 = Sequent(goal.left, Set(b <= a))
+              val s1 = prove(new_goal_1)
+              if s1.isValid then {
+                val s3 = have(goal) by Tautology.from(have(s1), P8 of (x := b, y := a))
+                proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
+                return s3.judgement
+              }
+            }
 
-                  // P3 & P3'
-                  if left == zero then {
-                    if debug == 1 then {
-                    println(s"zero <= x ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val s1 = have(goal) by Tautology.from(P3 of (x := right))
-                    proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
-                    return s1.judgement
-                  }
-                  if right == one then {
-                    if debug == 1 then {
-                    println(s"x <= one ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val s1 = have(goal) by Tautology.from(P3p of (x := left))
-                    proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
-                    return s1.judgement
-                  }
+            if left.label == OwA_lab.n then {
+              if debug == 1 then {
+                println(s"left n ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
+              val a = left.args.head
+              val b = left.args.tail.head
+              var new_goal_1 = Sequent(goal.left, Set(a <= right))
+              val s1 = prove(new_goal_1)
+              if s1.isValid then {
+                val s3 = have(goal) by Tautology.from(have(s1), P4 of (x := a, y := b), transitivity of (x := left, y := a, z := right))
+                proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
+                return s3.judgement
+              }
+              var new_goal_2 = Sequent(goal.left, Set(b <= right))
+              val s2 = prove(new_goal_2)
+              if s2.isValid then {
+                val s3 = have(goal) by Tautology.from(have(s2), P5 of (x := a, y := b), transitivity of (x := left, y := b, z := right))
+                proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
+                return s3.judgement
+              }
+            }
 
-                  // P9 & P9'
-                  left.args match {
-                    case Seq(a, OwA_lab.ne(b)) =>
-                      if left.label == n && a == b && right == zero then {
-                        if debug == 1 then {
-                        println(s"P9 ${i}")
-                        i += 1
-                        println(goal.right.head)
-                        println("-------------------")}
-                        val s1 = have(goal) by Tautology.from(P9 of (x := a))
-                        proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
-                        return s1.judgement
-                      }
-                    case _ =>
-                  }
-                  right.args match {
-                    case Seq(a, OwA_lab.ne(b)) =>
-                      if right.label == u && a == b && left == one then {
-                        if debug == 1 then {
-                        println(s"P9' ${i}")
-                        i += 1
-                        println(goal.right.head)
-                        println("-------------------")}
-                        val s1 = have(goal) by Tautology.from(P9p of (x := a))
-                        proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
-                        return s1.judgement
-                      }
-                    case _ =>
-                  }
-
-                  // P8
-                  if left.label == OwA_lab.ne && right.label == OwA_lab.ne then {
-                    if debug == 1 then {
-                    println(s"ne(y) <= ne(x) ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val a = left.args.head
-                    val b = right.args.head
-                    var new_goal_1 = Sequent(goal.left, Set(b <= a))
-                    val s1 = prove(new_goal_1)
-                    if s1.isValid then {
-                      val s3 = have(goal) by Tautology.from(have(s1), P8 of (x := b, y := a))
-                      proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
-                      return s3.judgement
-                    }
-                  }
-
-                  if left.label == OwA_lab.n then {
-                    if debug == 1 then {
-                    println(s"left n ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val a = left.args.head
-                    val b = left.args.tail.head
-                    var new_goal_1 = Sequent(goal.left, Set(a <= right))
-                    val s1 = prove(new_goal_1)
-                    if s1.isValid then {
-                      val s3 = have(goal) by Tautology.from(have(s1), P4 of (x := a, y := b), transitivity of (x := left, y := a, z := right))
-                      proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
-                      return s3.judgement
-                    }
-                    var new_goal_2 = Sequent(goal.left, Set(b <= right))
-                    val s2 = prove(new_goal_2)
-                    if s2.isValid then {
-                      val s3 = have(goal) by Tautology.from(have(s2), P5 of (x := a, y := b), transitivity of (x := left, y := b, z := right))
-                      proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
-                      return s3.judgement
-                    }
-                  }
-
-                  if left.label == OwA_lab.u then {
-                    if debug == 1 then {
-                    println(s"left u ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val a = left.args.head
-                    val b = left.args.tail.head
-                    var new_goal_1 = Sequent(goal.left, Set(a <= right))
-                    val s1 = prove(new_goal_1)
-                    if s1.isValid then {
-                      var new_goal_2 = Sequent(goal.left, Set(b <= right))
-                      val s2 = prove(new_goal_2)
-                      if s2.isValid then {
-                        val s3 = have(goal) by Tautology.from(have(s1), have(s2), P6p of (x := a, y := b, z := right))
-                        proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
-                        return s3.judgement
-                      }
-                    }
-                  }
-
-                  if right.label == OwA_lab.n then {
-                    if debug == 1 then {
-                    println(s"Right n ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val a = right.args.head
-                    val b = right.args.tail.head
-                    var new_goal_1 = Sequent(goal.left, Set(left <= a))
-                    val s1 = prove(new_goal_1)
-                    if s1.isValid then {
-                      var new_goal_2 = Sequent(goal.left, Set(left <= b))
-                      val s2 = prove(new_goal_2)
-                      if s2.isValid then {
-                        val s3 = have(goal) by Tautology.from(have(s1), have(s2), P6 of (x := left, y := a, z := b))
-                        proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
-                        return s3.judgement
-                      }
-                    }
-                  }
-
-                  if right.label == OwA_lab.u then {
-                    if debug == 1 then {
-                    println(s"Right u ${i}")
-                    i += 1
-                    println(goal.right.head)
-                    println("-------------------")}
-                    val a = right.args.head
-                    val b = right.args.tail.head
-                    var new_goal_1 = Sequent(goal.left, Set(left <= a))
-                    val s1 = prove(new_goal_1)
-                    if s1.isValid then {
-                      val s3 = have(goal) by Tautology.from(have(s1), P4p of (x := a, y := b), transitivity of (x := left, y := a, z := right))
-                      proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
-                      return s3.judgement
-                    }
-                    var new_goal_2 = Sequent(goal.left, Set(left <= b))
-                    val s2 = prove(new_goal_2)
-                    if s2.isValid then {
-                      val s3 = have(goal) by Tautology.from(have(s2), P5p of (x := a, y := b), transitivity of (x := left, y := b, z := right))
-                      proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
-                      return s3.judgement
-                    }
-                  }
-                  val current_known_term = Extract_known_term(goal)
-                  val useful_known_term = current_known_term.intersect(known_term)
-                  for (elem <- useful_known_term) {
-                    if !(left == elem) && !(right == elem) then {
-                      if debug == 1 then {
-                      println(s"Assiomi Transitivita ${i}")
-                      i += 1
-                      println(goal.right.head)
-                      println("Termine di taglio")
-                      println(elem)
-                      println("-------------------") }
-                      var new_goal_1 = Sequent(goal.left, Set(elem <= right))
-                      val s1 = prove(new_goal_1)
-                      if s1.isValid then {
-                        var new_goal_2 = Sequent(goal.left, Set(left <= elem))
-                        val s2 = prove(new_goal_2)
-                        if s2.isValid then {
-                          val s3 = have(goal) by Tautology.from(have(s1), have(s2), transitivity of (x := left, y := elem, z := right))
-                          proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
-                          return s3.judgement
-                        }
-                      }
-                    }
-                  }
-
-                  return proof.InvalidProofTactic("The inequality is not true in general")
-                }
-
-                case _ => {
-                  return proof.InvalidProofTactic("The inequality is not true in general")
+            if left.label == OwA_lab.u then {
+              if debug == 1 then {
+                println(s"left u ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
+              val a = left.args.head
+              val b = left.args.tail.head
+              var new_goal_1 = Sequent(goal.left, Set(a <= right))
+              val s1 = prove(new_goal_1)
+              if s1.isValid then {
+                var new_goal_2 = Sequent(goal.left, Set(b <= right))
+                val s2 = prove(new_goal_2)
+                if s2.isValid then {
+                  val s3 = have(goal) by Tautology.from(have(s1), have(s2), P6p of (x := a, y := b, z := right))
+                  proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
+                  return s3.judgement
                 }
               }
             }
+
+            if right.label == OwA_lab.n then {
+              if debug == 1 then {
+                println(s"Right n ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
+              val a = right.args.head
+              val b = right.args.tail.head
+              var new_goal_1 = Sequent(goal.left, Set(left <= a))
+              val s1 = prove(new_goal_1)
+              if s1.isValid then {
+                var new_goal_2 = Sequent(goal.left, Set(left <= b))
+                val s2 = prove(new_goal_2)
+                if s2.isValid then {
+                  val s3 = have(goal) by Tautology.from(have(s1), have(s2), P6 of (x := left, y := a, z := b))
+                  proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
+                  return s3.judgement
+                }
+              }
+            }
+
+            if right.label == OwA_lab.u then {
+              if debug == 1 then {
+                println(s"Right u ${i}")
+                i += 1
+                println(goal.right.head)
+                println("-------------------")
+              }
+              val a = right.args.head
+              val b = right.args.tail.head
+              var new_goal_1 = Sequent(goal.left, Set(left <= a))
+              val s1 = prove(new_goal_1)
+              if s1.isValid then {
+                val s3 = have(goal) by Tautology.from(have(s1), P4p of (x := a, y := b), transitivity of (x := left, y := a, z := right))
+                proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
+                return s3.judgement
+              }
+              var new_goal_2 = Sequent(goal.left, Set(left <= b))
+              val s2 = prove(new_goal_2)
+              if s2.isValid then {
+                val s3 = have(goal) by Tautology.from(have(s2), P5p of (x := a, y := b), transitivity of (x := left, y := b, z := right))
+                proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
+                return s3.judgement
+              }
+            }
+            val current_known_term = Extract_known_term(goal)
+            val useful_known_term = current_known_term.intersect(known_term)
+            for (elem <- useful_known_term) {
+              if !(left == elem) && !(right == elem) then {
+                if debug == 1 then {
+                  println(s"Transitivity with Known Term ${i}")
+                  i += 1
+                  println(goal.right.head)
+                  println("Cut Term")
+                  println(elem)
+                  println("-------------------")
+                }
+                var new_goal_1 = Sequent(goal.left, Set(elem <= right))
+                val s1 = prove(new_goal_1)
+                if s1.isValid then {
+                  var new_goal_2 = Sequent(goal.left, Set(left <= elem))
+                  val s2 = prove(new_goal_2)
+                  if s2.isValid then {
+                    val s3 = have(goal) by Tautology.from(have(s1), have(s2), transitivity of (x := left, y := elem, z := right))
+                    proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
+                    return s3.judgement
+                  }
+                }
+              }
+            }
+            return proof.InvalidProofTactic("The inequality is not true in general")
           }
         }
-        return prove(goal)
+        goal.right.head match {
+          case <=(left: Term, right: Term) => {
+            println(goal)
+            println("Number of Known Term")
+            println(known_term.size)
+            println("Number of call")
+            println(ncall)
+            println("*****************")
+            return prove(goal)
+          }
+
+          case ===(left: Term, right: Term) => {
+            var new_goal_1 = Sequent(goal.left, Set(left <= right))
+            var s1 = prove(new_goal_1)
+
+            if s1.isValid then {
+              var new_goal_2 = Sequent(goal.left, Set(right <= left))
+              val s2 = prove(new_goal_2)
+              if s2.isValid then {
+                val s3 = have(goal) by Tautology.from(have(s1), have(s2), antisymmetry of (x := left, y := right))
+                println(goal)
+                println("Number of Known Term")
+                println(known_term.size)
+                println("Number of call")
+                println(ncall)
+                println("*****************")
+                return s3.judgement
+              } else { return return proof.InvalidProofTactic("Word Problem can only be applied to solve goals of form bla bla bla") }
+            } else { return proof.InvalidProofTactic("Word Problem can only be applied to solve goals of form bla bla bla") }
+          }
+
+          case _ => return proof.InvalidProofTactic("Word Problem can only be applied to solve goals of form bla bla bla")
+        }
+
       }
+
     }
   }
 
@@ -452,20 +446,20 @@ object OwA_lab extends lisa.Main {
   val DeMorgan2 = Theorem(ne(x u y) <= (ne(x) n ne(y))) {
     have(thesis) by OwA.solve
   }
-  val DeMorgan3 = Theorem((ne(x) u ne(y)) <= ne(x n y) ) {
+  val DeMorgan3 = Theorem((ne(x) u ne(y)) <= ne(x n y)) {
     have(thesis) by OwA.solve
   }
   val DeMorgan4 = Theorem(ne(x n y) <= (ne(x) u ne(y))) {
     have(thesis) by OwA.solve
   }
- // val test2 = Theorem(x <= ne(ne(x))) {
+  // val test2 = Theorem(x <= ne(ne(x))) {
   //  have(thesis) by OwA.solve
-  //}
-  val EXTOA= Theorem(one <= (x n (ne(x) u y)) |- one <= y) {
-   have(thesis) by OwA.solve
+  // }
+  val EXTOA = Theorem(one <= (x n (ne(x) u y)) |- one <= y) {
+    have(thesis) by OwA.solve
   }
 
-  val test1 = Theorem(x <= x) {
+  val test1 = Theorem(one <= (ne(x) u x)) {
     have(thesis) by OwA.solve
   }
   val test2 = Theorem(x <= (x u y)) {
@@ -481,6 +475,24 @@ object OwA_lab extends lisa.Main {
     have(thesis) by OwA.solve
   }
 
+  val idempotence = Theorem((x u (y n (ne(z) u z))) === (y u (x n one))) {
+    have(thesis) by OwA.solve
+  }
 
+  val double_false = Theorem((x n ne(x)) === (y n ne(y))) {
+    have(thesis) by OwA.solve
+  }
+
+  val EXRM = Theorem(((x u z) <= y) |- x <= y) {
+    have(thesis) by OwA.solve
+  }
+
+  val EXVE = Theorem((x <= ne(z), y <= ne(z)) |- ((x u y) n z) === zero) {
+    have(thesis) by OwA.solve
+  }
+
+  val EXSG = Theorem(x <= y |- y === (x u y)) {
+    have(thesis) by OwA.solve
+  }
 
 }
