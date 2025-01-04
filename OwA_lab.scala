@@ -5,37 +5,39 @@ import lisa.automation.Substitution.ApplyRules as Substitution
 import lisa.automation.Tableau
 import scala.util.Try
 
-object OwA_lab extends lisa.Main {
+object Word_Problem extends lisa.Main {
 
   val x = variable
   val y = variable
   val z = variable
+
   val zero = ConstantTermLabel("zero", 0)
   addSymbol(zero)
-
-  var one = ConstantTermLabel("one", 0)
+  val one = ConstantTermLabel("one", 0)
   addSymbol(one)
 
-  // We introduce the signature of lattices
+  // Signature of ortholattices
   val <= = ConstantPredicateLabel.infix("<=", 2)
   addSymbol(<=)
-  val u = ConstantFunctionLabel.infix("u", 2) // join (union for sets, disjunction in boolean algebras)
+  val u = ConstantFunctionLabel.infix("u", 2) // join )
   addSymbol(u)
-  val n = ConstantFunctionLabel.infix("n", 2) // meet (interestion for sets, conjunction in boolean algebras)
+  val n = ConstantFunctionLabel.infix("n", 2) // meet 
   addSymbol(n)
-  val ne = ConstantFunctionLabel("ne", 1)
+  val ne = ConstantFunctionLabel("ne", 1) // negation
   addSymbol(ne)
+  
 
   // Enables infix notation
   extension (left: Term) {
-    def <=(right: Term): Formula = (OwA_lab.<= : ConstantPredicateLabel[2])(left, right)
-    infix def u(right: Term): Term = (OwA_lab.u: ConstantFunctionLabel[2])(left, right)
-    infix def n(right: Term): Term = (OwA_lab.n: ConstantFunctionLabel[2])(left, right)
-    def ne: Term = (OwA_lab.ne: ConstantFunctionLabel[1])(left)
-    def zero: Term = (OwA_lab.zero)
-    def one: Term = (OwA_lab.one)
+    def <=(right: Term): Formula = (Word_Problem.<= : ConstantPredicateLabel[2])(left, right)
+    infix def u(right: Term): Term = (Word_Problem.u: ConstantFunctionLabel[2])(left, right)
+    infix def n(right: Term): Term = (Word_Problem.n: ConstantFunctionLabel[2])(left, right)
+    def ne: Term = (Word_Problem.ne: ConstantFunctionLabel[1])(left)
+    def zero: Term = (Word_Problem.zero)
+    def one: Term = (Word_Problem.one)
   }
-  // We will now prove some statement about partial orders, which we axiomatize
+
+  // Equivalent Axiomatization of ortholattice
   val reflexivity = Axiom(x <= x)
   val antisymmetry = Axiom(((x <= y) /\ (y <= x)) ==> (x === y))
   val transitivity = Axiom(((x <= y) /\ (y <= z)) ==> (x <= z))
@@ -49,13 +51,14 @@ object OwA_lab extends lisa.Main {
   val P7p = Axiom(ne(ne(x)) <= x)
   val P8 = Axiom((x <= y) ==> (ne(y) <= ne(x)))
   val NC = Axiom((x <= ne(x)) ==> (x <= y))
-  // to delete
-  val P9 = Axiom((x n ne(x)) <= zero)
-  val P9p = Axiom(one <= (x u ne(x)))
   val P3 = Axiom(zero <= x)
   val P3p = Axiom(x <= one)
+  // to delete
+  val P9 = Axiom((x n ne(x)) <= zero)
+  val P9p = Axiom(one <= (x u ne(x))) 
   val noz = Axiom(ne(one) <= zero)
   val onz = Axiom(one <= ne(zero))
+  // 
 
   val EX1 = Theorem((z n ne(z)) <= zero) {
     have(thesis) by Tautology.from(P9 of (x := z))
@@ -86,14 +89,15 @@ object OwA_lab extends lisa.Main {
 
   object OwA extends ProofTactic {
     def solve(using lib: library.type, proof: lib.Proof)(goal: Sequent): proof.ProofTacticJudgement = {
-      if goal.right.size != 1 then proof.InvalidProofTactic("OwA can only be applied to solve goals of the form (s1 <= t1, s2 <= t2, ..., sn <= tn) |- s <= t")
+      if goal.right.size != 1 
+       then proof.InvalidProofTactic("OwA can only be applied to solve goals of the form (s1 <= t1, s2 <= t2, ..., sn <= tn) |- s <= t")
       else { // Starting the proof of goal
 
-        def Extract_known_term(goal: Sequent): Set[OwA_lab.Term] = {
+        def Extract_known_term(goal: Sequent): Set[Word_Problem.Term] = {
           val axiom_set = goal.left
           val toprove = goal.right
           val total_set = goal.left ++ goal.right
-          var total_term_set: Set[OwA_lab.Term] = Set()
+          var total_term_set: Set[Word_Problem.Term] = Set()
           for (elem <- total_set) {
             val elem_af = elem.asInstanceOf[AtomicFormula]
             val left = elem_af.args.head
@@ -103,20 +107,20 @@ object OwA_lab extends lisa.Main {
             total_term_set = total_term_set + right
           }
 
-          def subExtract(set: Set[OwA_lab.Term]): Set[OwA_lab.Term] = {
+          def subExtract(set: Set[Word_Problem.Term]): Set[Word_Problem.Term] = {
             var final_set = set
             for (elem <- set) {
-              if elem.label == OwA_lab.ne then {
+              if elem.label == Word_Problem.ne then {
                 val a = elem.args.head
                 final_set = final_set + a
               }
-              if elem.label == OwA_lab.n then {
+              if elem.label == n then {
                 val a = elem.args.head
                 val b = elem.args.tail.head
                 final_set = final_set + a
                 final_set = final_set + b
               }
-              if elem.label == OwA_lab.u then {
+              if elem.label == u then {
                 val a = elem.args.head
                 val b = elem.args.tail.head
                 final_set = final_set + a
@@ -130,11 +134,11 @@ object OwA_lab extends lisa.Main {
             return subExtract(final_set)
           }
 
-          def Complementation(set2: Set[OwA_lab.Term]): Set[OwA_lab.Term] = {
+          def Complementation(set2: Set[Word_Problem.Term]): Set[Word_Problem.Term] = {
             var complementation = set2
             for (elem <- set2) {
-              complementation = complementation + (OwA_lab.ne(elem))
-              complementation = complementation + (OwA_lab.ne(OwA_lab.ne((elem))))
+              complementation = complementation + (Word_Problem.ne(elem))
+              complementation = complementation + (Word_Problem.ne(Word_Problem.ne((elem))))
             }
             return complementation
           }
@@ -160,6 +164,13 @@ object OwA_lab extends lisa.Main {
         var proven_sequent: Set[proof.ValidProofTactic] = Set()
         var visited_sequent: Set[Sequent] = Set()
 
+
+        for(elem <- axiom_set) {
+          var new_goal = Sequent(goal.left, Set(elem))
+          val s1 = have(new_goal) by Restate
+          proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
+        }
+
         def prove(goal: Sequent): proof.ProofTacticJudgement = {
           ncall = ncall + 1
           for (elem <- proven_sequent) {
@@ -178,21 +189,11 @@ object OwA_lab extends lisa.Main {
             }
             return proof.InvalidProofTactic("The inequality is not true in general")
           } else {
-            visited_sequent += (goal)
-            if axiom_set.contains(goal.right.head) then {
-              if debug == 1 then {
-                println(s"In Axiom Set ${i}")
-                i += 1
-                println(goal.right.head)
-                println("-------------------")
-              }
-              val s1 = have(goal) by Restate
-              proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
-              return s1.judgement
-            }
+            visited_sequent = visited_sequent + goal
             val form = goal.right.head.asInstanceOf[AtomicFormula]
             val left = form.args.head
             val right = form.args.tail.head
+
             // REFLEXIVITY
             if left == right then {
               if debug == 1 then {
@@ -206,7 +207,7 @@ object OwA_lab extends lisa.Main {
               return s1.judgement
             }
 
-            if right == OwA_lab.ne(OwA_lab.ne(left)) then {
+            if right == Word_Problem.ne(Word_Problem.ne(left)) then {
               if debug == 1 then {
                 println(s"Axiom P7 ${i}")
                 i += 1
@@ -217,7 +218,8 @@ object OwA_lab extends lisa.Main {
               proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
               return s1.judgement
             }
-            if left == OwA_lab.ne(OwA_lab.ne(right)) then {
+
+            if left == Word_Problem.ne(Word_Problem.ne(right)) then {
               if debug == 1 then {
                 println(s"Axiom P7p ${i}")
                 i += 1
@@ -228,6 +230,7 @@ object OwA_lab extends lisa.Main {
               proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
               return s1.judgement
             }
+
             // P3 & P3'
             if left == zero then {
               if debug == 1 then {
@@ -253,7 +256,7 @@ object OwA_lab extends lisa.Main {
             }
 
             // NC
-            var new_goal_1 = Sequent(goal.left, Set(left <= OwA_lab.ne(left)))
+            var new_goal_1 = Sequent(goal.left, Set(left <= Word_Problem.ne(left)))
             val s1 = prove(new_goal_1)
             if s1.isValid then {
               val s3 = have(goal) by Tautology.from(NC of (x := left, y := right), have(s1))
@@ -262,7 +265,7 @@ object OwA_lab extends lisa.Main {
             }
 
             // P8
-            if left.label == OwA_lab.ne && right.label == OwA_lab.ne then {
+            if left.label == Word_Problem.ne && right.label == Word_Problem.ne then {
               if debug == 1 then {
                 println(s"ne(y) <= ne(x) ${i}")
                 i += 1
@@ -280,7 +283,7 @@ object OwA_lab extends lisa.Main {
               }
             }
 
-            if left.label == OwA_lab.n then {
+            if left.label == n then {
               if debug == 1 then {
                 println(s"left n ${i}")
                 i += 1
@@ -305,7 +308,7 @@ object OwA_lab extends lisa.Main {
               }
             }
 
-            if left.label == OwA_lab.u then {
+            if left.label == u then {
               if debug == 1 then {
                 println(s"left u ${i}")
                 i += 1
@@ -327,7 +330,7 @@ object OwA_lab extends lisa.Main {
               }
             }
 
-            if right.label == OwA_lab.n then {
+            if right.label == n then {
               if debug == 1 then {
                 println(s"Right n ${i}")
                 i += 1
@@ -349,7 +352,7 @@ object OwA_lab extends lisa.Main {
               }
             }
 
-            if right.label == OwA_lab.u then {
+            if right.label == u then {
               if debug == 1 then {
                 println(s"Right u ${i}")
                 i += 1
