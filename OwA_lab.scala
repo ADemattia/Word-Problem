@@ -1,9 +1,7 @@
-//> using scala "3.5.1"
-//> using dep "ch.epfl.lara::lisa::0.7,url=https://github.com/epfl-lara/lisa/releases/download/0.7/lisa_3-0.7.jar"
-
 import lisa.automation.Substitution.ApplyRules as Substitution
 import lisa.automation.Tableau
 import scala.util.Try
+
 
 object Word_Problem extends lisa.Main {
 
@@ -40,6 +38,7 @@ object Word_Problem extends lisa.Main {
   // Equivalent Axiomatization of ortholattice
   val reflexivity = Axiom(x <= x)
   val antisymmetry = Axiom(((x <= y) /\ (y <= x)) ==> (x === y))
+  val def_equ = Axiom((x === y) ==> ((x <= y) /\ (y <= x)))
   val transitivity = Axiom(((x <= y) /\ (y <= z)) ==> (x <= z))
   val P4 = Axiom((x n y) <= x)
   val P5 = Axiom((x n y) <= y)
@@ -73,17 +72,6 @@ object Word_Problem extends lisa.Main {
     have(thesis) by Tautology.from(step4, transitivity of (x := one, y := (x n (ne(x) u y)), z := y))
   }
 
-  // Now we'll need to reason with equality. We can do so with the Substitution tactic, which substitutes equals for equals.
-  // The argument of Substitutions can be either an equality (s===t). In this case, the result should contain (s===t) in assumptions.
-  // Or it can be a previously proven step showing a formula of the form (s===t).
-  // In this case, assumptions of this precedently proven fact need to be in the assumptions of the conclusion.
-
-  // Note however that Restate and Tautology now by themselves that t === t, for any t.
-
-  // Tedious, isn't it
-  // Can we automate this?
-  // Yes, we can!
-
   import lisa.prooflib.ProofTacticLib.ProofTactic
   import lisa.prooflib.Library
 
@@ -93,77 +81,70 @@ object Word_Problem extends lisa.Main {
        then proof.InvalidProofTactic("OwA can only be applied to solve goals of the form (s1 <= t1, s2 <= t2, ..., sn <= tn) |- s <= t")
       else { // Starting the proof of goal
 
-        def Extract_known_term(goal: Sequent): Set[Word_Problem.Term] = {
-          val axiom_set = goal.left
-          val toprove = goal.right
-          val total_set = goal.left ++ goal.right
-          var total_term_set: Set[Word_Problem.Term] = Set()
-          for (elem <- total_set) {
+        def extractRelevantTerm(goal: Sequent): Set[Word_Problem.Term] = {
+          val formula_set = goal.left ++ goal.right
+          var relevant_term: Set[Word_Problem.Term] = Set()
+          for (elem <- formula_set) {
             val elem_af = elem.asInstanceOf[AtomicFormula]
             val left = elem_af.args.head
             val right = elem_af.args.tail.head
-
-            total_term_set = total_term_set + left
-            total_term_set = total_term_set + right
+            relevant_term = relevant_term + left
+            relevant_term = relevant_term + right
           }
 
-          def subExtract(set: Set[Word_Problem.Term]): Set[Word_Problem.Term] = {
-            var final_set = set
+          def extract(set: Set[Word_Problem.Term], elem: Word_Problem.Term): Set[Word_Problem.Term] = {
+            var output_set = set
+            if elem.label == Word_Problem.ne then {
+                val a = elem.args.head
+                output_set = set + a
+                return extract(output_set, a)
+              }
+            if elem.label == n then {
+              val a = elem.args.head
+              val b = elem.args.tail.head
+              output_set = output_set + a
+              output_set = output_set + b
+              return (extract(output_set, a) ++ extract(output_set, b))
+              }
+            if elem.label == u then {
+              val a = elem.args.head
+              val b = elem.args.tail.head
+              output_set = output_set + a
+              output_set = output_set + b
+              return (extract(output_set, a) ++ extract(output_set, b))
+              }
+              return output_set
+          }
+
+          def extractKnownTerm(set: Set[Word_Problem.Term]): Set[Word_Problem.Term] = {
+            var known_term = set
             for (elem <- set) {
-              if elem.label == Word_Problem.ne then {
-                val a = elem.args.head
-                final_set = final_set + a
-              }
-              if elem.label == n then {
-                val a = elem.args.head
-                val b = elem.args.tail.head
-                final_set = final_set + a
-                final_set = final_set + b
-              }
-              if elem.label == u then {
-                val a = elem.args.head
-                val b = elem.args.tail.head
-                final_set = final_set + a
-                final_set = final_set + b
-              }
+             known_term = extract(known_term, elem)
             }
-
-            if final_set == set then { // nothing more was extracted
-              return final_set
-            }
-            return subExtract(final_set)
+            return known_term
           }
 
-          def Complementation(set2: Set[Word_Problem.Term]): Set[Word_Problem.Term] = {
-            var complementation = set2
-            for (elem <- set2) {
-              complementation = complementation + (Word_Problem.ne(elem))
-              complementation = complementation + (Word_Problem.ne(Word_Problem.ne((elem))))
+          def addComplementedTerm(set: Set[Word_Problem.Term]): Set[Word_Problem.Term] = {
+            var complemented_term = set
+            for (elem <- set) {
+              complemented_term = complemented_term + (Word_Problem.ne(elem))
+              complemented_term = complemented_term + (Word_Problem.ne(Word_Problem.ne((elem))))
             }
-            return complementation
+            return complemented_term
           }
 
-          val known_term = subExtract(total_term_set)
-          return Complementation(known_term)
+          val known_term = extractKnownTerm(relevant_term)
+          return addComplementedTerm(known_term)
         }
 
-        val axiom_set = goal.left
-        var axiom_term: Set[Term] = Set()
-        for (elem <- axiom_set) {
-          val elem_af = elem.asInstanceOf[AtomicFormula]
-          val left = elem_af.args.head
-          val right = elem_af.args.tail.head
-          axiom_term = axiom_term + left
-          axiom_term = axiom_term + right
-        }
-
-        val known_term = Extract_known_term(goal)
+        val relevant_term = extractRelevantTerm(goal)
         var i = 0
         val debug = 0
         var ncall = 0
+        val axiom_set = goal.left
+        var axiom_term: Set[Term] = Set()
         var proven_sequent: Set[proof.ValidProofTactic] = Set()
         var visited_sequent: Set[Sequent] = Set()
-
 
         for(elem <- axiom_set) {
           var new_goal = Sequent(goal.left, Set(elem))
@@ -173,13 +154,15 @@ object Word_Problem extends lisa.Main {
 
         def prove(goal: Sequent): proof.ProofTacticJudgement = {
           ncall = ncall + 1
+          //Check in proven_sequent
           for (elem <- proven_sequent) {
             if elem.bot == goal then {
               val s1 = have(goal) by Tautology.from(have(elem))
               return s1.judgement
             }
           }
-
+          
+          //Check in visited_sequent
           if visited_sequent.contains(goal) then {
             if debug == 1 then {
               println(s"Yet Visited ${i}")
@@ -190,11 +173,12 @@ object Word_Problem extends lisa.Main {
             return proof.InvalidProofTactic("The inequality is not true in general")
           } else {
             visited_sequent = visited_sequent + goal
-            val form = goal.right.head.asInstanceOf[AtomicFormula]
-            val left = form.args.head
-            val right = form.args.tail.head
 
-            // REFLEXIVITY
+            val formula = goal.right.head.asInstanceOf[AtomicFormula]
+            val left = formula.args.head
+            val right = formula.args.tail.head
+
+            // Reflexivity
             if left == right then {
               if debug == 1 then {
                 println(s"Reflexivity ${i}")
@@ -207,6 +191,8 @@ object Word_Problem extends lisa.Main {
               return s1.judgement
             }
 
+            
+            // Axiom P7 : x <= ne(ne(x))
             if right == Word_Problem.ne(Word_Problem.ne(left)) then {
               if debug == 1 then {
                 println(s"Axiom P7 ${i}")
@@ -219,6 +205,7 @@ object Word_Problem extends lisa.Main {
               return s1.judgement
             }
 
+            // Axiom P7': ne(ne(x)) <= x
             if left == Word_Problem.ne(Word_Problem.ne(right)) then {
               if debug == 1 then {
                 println(s"Axiom P7p ${i}")
@@ -231,7 +218,7 @@ object Word_Problem extends lisa.Main {
               return s1.judgement
             }
 
-            // P3 & P3'
+            // Axiom P3 - least element : 0 <= x 
             if left == zero then {
               if debug == 1 then {
                 println(s"zero <= x ${i}")
@@ -243,6 +230,8 @@ object Word_Problem extends lisa.Main {
               proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
               return s1.judgement
             }
+
+            // Axiom P3' - least element : x <= 1
             if right == one then {
               if debug == 1 then {
                 println(s"x <= one ${i}")
@@ -253,15 +242,6 @@ object Word_Problem extends lisa.Main {
               val s1 = have(goal) by Tautology.from(P3p of (x := left))
               proven_sequent = proven_sequent + s1.judgement.asInstanceOf[proof.ValidProofTactic]
               return s1.judgement
-            }
-
-            // NC
-            var new_goal_1 = Sequent(goal.left, Set(left <= Word_Problem.ne(left)))
-            val s1 = prove(new_goal_1)
-            if s1.isValid then {
-              val s3 = have(goal) by Tautology.from(NC of (x := left, y := right), have(s1))
-              proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
-              return s3.judgement
             }
 
             // P8
@@ -376,9 +356,20 @@ object Word_Problem extends lisa.Main {
                 return s3.judgement
               }
             }
-            val current_known_term = Extract_known_term(goal)
-            val useful_known_term = current_known_term.intersect(known_term)
-            for (elem <- useful_known_term) {
+
+            // NC Axiom : x <= ne(x) => x <= y
+            var new_goal_1 = Sequent(goal.left, Set(left <= Word_Problem.ne(left)))
+            val s1 = prove(new_goal_1)
+            if s1.isValid then {
+              val s3 = have(goal) by Tautology.from(NC of (x := left, y := right), have(s1))
+              proven_sequent = proven_sequent + s3.judgement.asInstanceOf[proof.ValidProofTactic]
+              return s3.judgement
+            }
+
+
+            val current_relevant_term = extractRelevantTerm(goal)
+            val useful_relevant_term = current_relevant_term.intersect(relevant_term)
+            for (elem <- useful_relevant_term) {
               if !(left == elem) && !(right == elem) then {
                 if debug == 1 then {
                   println(s"Transitivity with Known Term ${i}")
@@ -405,59 +396,54 @@ object Word_Problem extends lisa.Main {
           }
         }
         goal.right.head match {
-          case <=(left: Term, right: Term) => {
+          case <=(left_t: Term, right_t: Term) => {
             println(goal)
             println("Number of Known Term")
-            println(known_term.size)
+            println(relevant_term.size)
             println("Number of call")
             println(ncall)
-            println("*****************")
+            println("-------------------")
             return prove(goal)
           }
 
           case ===(left: Term, right: Term) => {
             var new_goal_1 = Sequent(goal.left, Set(left <= right))
             var s1 = prove(new_goal_1)
-
             if s1.isValid then {
               var new_goal_2 = Sequent(goal.left, Set(right <= left))
-              val s2 = prove(new_goal_2)
+              println(new_goal_2)
+              var s2 = prove(new_goal_2)
               if s2.isValid then {
                 val s3 = have(goal) by Tautology.from(have(s1), have(s2), antisymmetry of (x := left, y := right))
                 println(goal)
                 println("Number of Known Term")
-                println(known_term.size)
+                println(relevant_term.size)
                 println("Number of call")
                 println(ncall)
-                println("*****************")
-                return s3.judgement
-              } else { return return proof.InvalidProofTactic("Word Problem can only be applied to solve goals of form bla bla bla") }
-            } else { return proof.InvalidProofTactic("Word Problem can only be applied to solve goals of form bla bla bla") }
+                println("-------------------")
+                return s3.judgement}
+                else {return return proof.InvalidProofTactic("Word Problem can only be applied to solve goals of form aaaaaaaa") }
+            } else {return proof.InvalidProofTactic("Word Problem can only be applied to solve goals of form bbbbbbb") }
           }
 
           case _ => return proof.InvalidProofTactic("Word Problem can only be applied to solve goals of form bla bla bla")
         }
 
       }
-
     }
   }
 
-  val DeMorgan1 = Theorem((ne(x) n ne(y)) <= ne(x u y)) {
+
+
+
+  val DeMorgan1 = Theorem((ne(x) n ne(y)) === ne(x u y)) {
     have(thesis) by OwA.solve
   }
-  val DeMorgan2 = Theorem(ne(x u y) <= (ne(x) n ne(y))) {
+
+  val DeMorgan2 = Theorem(ne(x n y)===(ne(x) u ne(y))) {
     have(thesis) by OwA.solve
   }
-  val DeMorgan3 = Theorem((ne(x) u ne(y)) <= ne(x n y)) {
-    have(thesis) by OwA.solve
-  }
-  val DeMorgan4 = Theorem(ne(x n y) <= (ne(x) u ne(y))) {
-    have(thesis) by OwA.solve
-  }
-  // val test2 = Theorem(x <= ne(ne(x))) {
-  //  have(thesis) by OwA.solve
-  // }
+
   val EXTOA = Theorem(one <= (x n (ne(x) u y)) |- one <= y) {
     have(thesis) by OwA.solve
   }
@@ -495,6 +481,10 @@ object Word_Problem extends lisa.Main {
   }
 
   val EXSG = Theorem(x <= y |- y === (x u y)) {
+    have(thesis) by OwA.solve
+  }
+
+  val EXPI = Theorem((x n z) === (x n z n ne(y n ne(x)))) {
     have(thesis) by OwA.solve
   }
 
