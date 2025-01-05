@@ -58,8 +58,6 @@ object Word_Problem extends lisa.Main {
   val P9 = Axiom((x n ne(x)) <= zero)
   val P9p = Axiom(one <= (x u ne(x))) 
 
-  // provable 
-  val onz = Axiom(one <= ne(zero))
 
   val noz = Theorem(ne(one) <= zero) {
      have(thesis) by Backward_Proof.solve
